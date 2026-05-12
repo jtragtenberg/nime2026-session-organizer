@@ -33,7 +33,7 @@ class NIMESimulation {
     // Layers (bottom to top)
     this.terrainLayer  = this.zoomG.append("g").attr("class", "terrain-layer");
     this.anchorLayer   = this.zoomG.append("g").attr("class", "anchor-layer");
-    this.linkLayer     = this.zoomG.append("g").attr("class", "link-layer").attr("opacity", 0.12);
+    this.linkLayer     = this.zoomG.append("g").attr("class", "link-layer");
     this.paperLayer    = this.zoomG.append("g").attr("class", "paper-layer");
 
     // Zoom / pan
@@ -243,11 +243,13 @@ class NIMESimulation {
     const nodes = [...this.sessionAnchors, ...this.paperNodes];
     const links = this._buildLinks();
 
+    const linkForce = d3.forceLink(links)
+      .id(d => d.id)
+      .distance(l => 100 - l.weight * 30)
+      .strength(l => l.weight * 0.55);
+
     this.sim = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links)
-        .id(d => d.id)
-        .distance(l => 100 - l.weight * 30)
-        .strength(l => l.weight * 0.55))
+      .force("link", linkForce)
       .force("charge", d3.forceManyBody()
         .strength(d => d.type === "session" ? 0 : -28))
       // Always pull papers gently toward center — prevents wandering when no attractions
@@ -261,6 +263,20 @@ class NIMESimulation {
       .alphaDecay(0.01)
       .on("tick", () => this._tick())
       .on("end",  () => this._scheduleTerrainRender());
+
+    this._resolvedLinks = linkForce.links();
+    this._drawLinks();
+  }
+
+  _drawLinks() {
+    this.linkLayer.selectAll("line.attraction-link")
+      .data(this._resolvedLinks || [], (d, i) => i)
+      .join("line")
+      .attr("class", "attraction-link")
+      .attr("stroke", l => AREA_COLORS[l.source.primary] || "#888")
+      .attr("stroke-opacity", l => 0.12 + l.weight * 0.25)
+      .attr("stroke-width", l => 0.6 + l.weight * 0.7)
+      .attr("stroke-dasharray", "4,5");
   }
 
   reheat() {
@@ -435,6 +451,11 @@ class NIMESimulation {
   _tick() {
     this.paperLayer.selectAll("g.paper-node")
       .attr("transform", d => `translate(${d.x ?? 0},${d.y ?? 0})`);
+    this.linkLayer.selectAll("line.attraction-link")
+      .attr("x1", l => l.source.x ?? 0)
+      .attr("y1", l => l.source.y ?? 0)
+      .attr("x2", l => l.target.fx ?? l.target.x ?? 0)
+      .attr("y2", l => l.target.fy ?? l.target.y ?? 0);
     if (Math.random() < 0.05) this._scheduleTerrainRender();
   }
 
@@ -448,6 +469,15 @@ class NIMESimulation {
         if (!this._searchIds) return 1;
         return this._searchIds.has(d.id) ? 1 : 0.1;
       });
+  }
+
+  flashPaper(paperId) {
+    const node = this.paperLayer.selectAll("g.paper-node")
+      .filter(d => d.id === paperId);
+    if (node.empty()) return;
+    node.select(".paper-circle")
+      .transition().duration(120).attr("r", d => this._paperRadius(d) * 2.5)
+      .transition().duration(300).attr("r", d => this._paperRadius(d));
   }
 
   // ── Filter ────────────────────────────────────────────────────────────────────

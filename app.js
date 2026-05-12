@@ -8,12 +8,19 @@ let state = {
   lastHash: "",
 };
 
-let sim          = null;
-let pollTimer    = null;
-let syncStatus   = { ts: 0, ok: true };
-let activeFilter = new Set(Object.keys(AREA_COLORS));
-let searchQuery  = "";
-let searchFields = new Set(["title", "authors", "keywords"]);
+let sim                 = null;
+let pollTimer           = null;
+let syncStatus          = { ts: 0, ok: true };
+let activeFilter        = new Set(Object.keys(AREA_COLORS));
+let searchQuery         = "";
+let searchFields        = new Set(["title", "authors", "keywords"]);
+let searchResultIndex   = -1;
+let _pendingPanelRender = false;
+
+function _isEditing() {
+  const el = document.activeElement;
+  return !!(el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.contentEditable === "true"));
+}
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
 
@@ -100,7 +107,12 @@ function applyState(data) {
   state.papers   = data.papers;
   state.sessions = data.sessions;
   sim.setData(data.papers, data.sessions);
-  renderPanel();
+  if (_isEditing()) {
+    _pendingPanelRender = true;
+  } else {
+    renderPanel();
+    _pendingPanelRender = false;
+  }
   updateGlobalStats();
 }
 
@@ -138,6 +150,11 @@ async function handleAssign(paperId, sessionId) {
 // ── Panel rendering ───────────────────────────────────────────────────────────
 
 function renderPanel() {
+  // Save which paper cards are currently flipped (showing abstract)
+  const flippedIds = new Set(
+    [...document.querySelectorAll(".paper-card.flipped")].map(c => c.dataset.paperId)
+  );
+
   const container = document.getElementById("session-list");
   container.innerHTML = "";
 
@@ -179,8 +196,18 @@ function renderPanel() {
     container.appendChild(slotEl);
   }
 
-  // Re-apply search highlighting after panel re-render
-  if (searchQuery) applySearch();
+  // Restore any cards that were open before the re-render (no animation)
+  flippedIds.forEach(id => {
+    const card  = document.querySelector(`.paper-card[data-paper-id="${id}"]`);
+    if (!card) return;
+    const front = card.querySelector(".card-front");
+    const back  = card.querySelector(".card-back");
+    if (front && back) {
+      front.style.display = "none";
+      back.style.display  = "block";
+      card.classList.add("flipped");
+    }
+  });
 }
 
 function renderSessionBox(session) {
@@ -276,8 +303,8 @@ function renderSessionBox(session) {
 }
 
 function renderPaperCard(paper, session) {
-  const color     = AREA_COLORS[paper.primary] || "#888";
-  const barWidth  = paper.ptype === "Long" ? 12 : paper.ptype === "Medium" ? 8 : 4;
+  const color    = AREA_COLORS[paper.primary] || "#888";
+  const barWidth = paper.ptype === "Long" ? 12 : paper.ptype === "Medium" ? 8 : 4;
 
   const card = document.createElement("div");
   card.className = "paper-card";
@@ -290,12 +317,14 @@ function renderPaperCard(paper, session) {
   });
   card.addEventListener("dragend", () => card.classList.remove("dragging"));
 
-  // Color bar
+  // ── Front face ──────────────────────────────────────────────────────────────
+  const front = document.createElement("div");
+  front.className = "card-front";
+
   const bar = document.createElement("span");
   bar.className = "paper-bar";
   bar.style.cssText = `background:${color};width:${barWidth}px;`;
 
-  // Icons row
   const icons = document.createElement("span");
   icons.className = "paper-icons";
 
@@ -308,9 +337,7 @@ function renderPaperCard(paper, session) {
     paper.featured = !paper.featured;
     starIcon.className = paper.featured ? "paper-star active" : "paper-star";
     renderPanel();
-    await sheetPost(new URLSearchParams({
-      action: "toggleFeatured", paperId: paper.id, value: paper.featured,
-    }));
+    await sheetPost(new URLSearchParams({ action: "toggleFeatured", paperId: paper.id, value: paper.featured }));
   });
 
   const wifiIcon = document.createElement("span");
@@ -322,51 +349,111 @@ function renderPaperCard(paper, session) {
     paper.remote = !paper.remote;
     wifiIcon.className = paper.remote ? "paper-wifi active" : "paper-wifi";
     renderPanel();
-    await sheetPost(new URLSearchParams({
-      action: "toggleRemote", paperId: paper.id, value: paper.remote,
-    }));
+    await sheetPost(new URLSearchParams({ action: "toggleRemote", paperId: paper.id, value: paper.remote }));
   });
 
   icons.append(starIcon, wifiIcon);
 
-  // Title + authors
   const info = document.createElement("span");
   info.className = "paper-info";
   info.innerHTML = `<span class="paper-title">${truncate(paper.title, 60)}</span><span class="paper-authors"> · ${truncate(paper.authors, 40)}</span>`;
 
-  // Unassign button
   const unBtn = document.createElement("button");
   unBtn.className = "unassign-btn";
   unBtn.title     = "Return to simulation";
   unBtn.textContent = "↩";
-  unBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    handleAssign(paper.id, null);
-  });
+  unBtn.addEventListener("click", (e) => { e.stopPropagation(); handleAssign(paper.id, null); });
 
   const topRow = document.createElement("div");
   topRow.className = "paper-card-top";
   topRow.append(bar, icons, info, unBtn);
+  front.appendChild(topRow);
 
-  // Expanded section (abstract + ideas)
-  const expanded = document.createElement("div");
-  expanded.className = "paper-expanded";
-  expanded.style.display = "none";
-  expanded.appendChild(buildExpandedContent(paper));
+  // ── Back face ───────────────────────────────────────────────────────────────
+  const back = document.createElement("div");
+  back.className = "card-back";
+  back.style.display = "none";
 
-  topRow.addEventListener("click", () => {
-    const open = expanded.style.display !== "none";
-    expanded.style.display = open ? "none" : "block";
-    card.classList.toggle("open", !open);
-  });
+  const backHeader = document.createElement("div");
+  backHeader.className = "card-back-header";
 
-  card.append(topRow, expanded);
+  const backBar = document.createElement("span");
+  backBar.className = "paper-bar";
+  backBar.style.cssText = `background:${color};width:${barWidth}px;flex-shrink:0;height:100%;`;
+
+  const backTitle = document.createElement("span");
+  backTitle.className = "card-back-title";
+  backTitle.textContent = paper.title;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "card-back-close";
+  closeBtn.title = "Close";
+  closeBtn.textContent = "×";
+
+  backHeader.append(backBar, backTitle, closeBtn);
+  back.append(backHeader, buildExpandedContent(paper));
+
+  // ── Flip animation ──────────────────────────────────────────────────────────
+  let flipped = false;
+  function doFlip(e) {
+    if (e) e.stopPropagation();
+    const wasFlipped = flipped;
+    card.style.transition = "transform 0.14s ease-in";
+    card.style.transform  = "scaleX(0)";
+    card.addEventListener("transitionend", () => {
+      if (!flipped) {
+        front.style.display = "none";
+        back.style.display  = "block";
+        card.classList.add("flipped");
+      } else {
+        back.style.display  = "none";
+        front.style.display = "block";
+        card.classList.remove("flipped");
+      }
+      flipped = !flipped;
+      card.style.transition = "transform 0.14s ease-out";
+      requestAnimationFrame(() => {
+        card.style.transform = "scaleX(1)";
+        card.addEventListener("transitionend", () => {
+          card.style.transition = "";
+          card.style.transform  = "";
+          // Flush deferred panel update when closing the card
+          if (wasFlipped && _pendingPanelRender && !_isEditing()) {
+            renderPanel();
+            _pendingPanelRender = false;
+          }
+        }, { once: true });
+      });
+    }, { once: true });
+  }
+
+  topRow.addEventListener("click", doFlip);
+  closeBtn.addEventListener("click", doFlip);
+
+  card.append(front, back);
   return card;
 }
 
 function buildExpandedContent(paper) {
   const el = document.createElement("div");
   el.className = "expanded-inner";
+
+  // Keywords
+  if (paper.keywords) {
+    const kwWrap = document.createElement("div");
+    kwWrap.className = "ideas-wrap";
+    kwWrap.innerHTML = `<div class="ideas-label">Keywords</div>`;
+    const chips = document.createElement("div");
+    chips.className = "chips-row";
+    paper.keywords.split(/[;,]/).map(s => s.trim()).filter(Boolean).forEach(kw => {
+      const chip = document.createElement("span");
+      chip.className = "idea-chip kw-chip";
+      chip.textContent = kw;
+      chips.appendChild(chip);
+    });
+    kwWrap.appendChild(chips);
+    el.appendChild(kwWrap);
+  }
 
   // Abstract
   const abs = document.createElement("p");
@@ -734,66 +821,122 @@ function initSearch() {
 
   input.addEventListener("input", () => {
     searchQuery = input.value.trim().toLowerCase();
-    applySearch();
+    searchResultIndex = 0;
+    runSearch();
   });
 
-  // Clear on Escape
   input.addEventListener("keydown", e => {
-    if (e.key === "Escape") {
-      input.value = "";
-      searchQuery = "";
-      applySearch();
-    }
+    if (e.key === "Escape") clearSearch();
   });
 
-  document.querySelectorAll(".field-toggle").forEach(btn => {
-    const field = btn.dataset.field;
-    if (btn.classList.contains("active")) searchFields.add(field);
+  document.getElementById("search-clear").addEventListener("click", clearSearch);
 
-    btn.addEventListener("click", () => {
-      if (searchFields.has(field)) {
-        if (searchFields.size > 1) {
-          searchFields.delete(field);
-          btn.classList.remove("active");
-        }
-      } else {
-        searchFields.add(field);
-        btn.classList.add("active");
-      }
-      applySearch();
+  document.querySelectorAll("#search-checkboxes input[type=checkbox]").forEach(cb => {
+    if (cb.checked) searchFields.add(cb.dataset.field);
+    cb.addEventListener("change", () => {
+      if (cb.checked) searchFields.add(cb.dataset.field);
+      else            searchFields.delete(cb.dataset.field);
+      if (searchFields.size === 0) { cb.checked = true; searchFields.add(cb.dataset.field); }
+      runSearch();
     });
   });
 }
 
-function applySearch() {
-  const countEl = document.getElementById("search-count");
+function clearSearch() {
+  document.getElementById("search-input").value = "";
+  searchQuery = "";
+  searchResultIndex = 0;
+  runSearch();
+}
+
+function runSearch() {
+  const resultsEl = document.getElementById("search-results");
 
   if (!searchQuery) {
+    resultsEl.innerHTML = "";
+    resultsEl.classList.remove("has-results");
     sim.setSearch(null);
-    document.querySelectorAll(".paper-card").forEach(c => {
-      c.classList.remove("search-dim", "search-match");
-    });
-    countEl.textContent = "";
     return;
   }
 
-  const matchingIds = new Set();
-  for (const paper of state.papers) {
-    if (paperMatches(paper, searchQuery, searchFields)) {
-      matchingIds.add(paper.id);
-    }
+  const matches = state.papers.filter(p => paperMatches(p, searchQuery, searchFields));
+
+  if (!matches.length) {
+    resultsEl.innerHTML = `<div id="search-results-header">No matches</div>`;
+    resultsEl.classList.add("has-results");
+    sim.setSearch(new Set());
+    return;
   }
 
-  sim.setSearch(matchingIds);
+  sim.setSearch(new Set(matches.map(p => p.id)));
 
-  document.querySelectorAll(".paper-card").forEach(card => {
-    const hit = matchingIds.has(card.dataset.paperId);
-    card.classList.toggle("search-dim",  !hit);
-    card.classList.toggle("search-match", hit);
+  resultsEl.innerHTML = "";
+  resultsEl.classList.add("has-results");
+
+  const header = document.createElement("div");
+  header.id = "search-results-header";
+  header.textContent = `${matches.length} paper${matches.length === 1 ? "" : "s"} found`;
+  resultsEl.appendChild(header);
+
+  matches.forEach((paper, i) => {
+    resultsEl.appendChild(buildResultCard(paper, i));
+  });
+}
+
+function buildResultCard(paper, i) {
+  const color  = AREA_COLORS[paper.primary] || "#888";
+  const label  = AREA_LABELS[paper.primary] || paper.primary;
+  const q      = searchQuery;
+
+  const card = document.createElement("div");
+  card.className = "search-result-card";
+  card.dataset.paperId = paper.id;
+
+  const sessionInfo = paper.sessionId
+    ? `<span class="src-session">${paper.sessionId}${paper.sessionName ? " · " + paper.sessionName : ""}</span>`
+    : "<span>unassigned</span>";
+
+  const starIcon = paper.featured ? " ★" : "";
+  const wifiIcon = paper.remote   ? " ⌁" : "";
+
+  card.innerHTML = `
+    <div class="src-title">
+      <span class="src-area-dot" style="background:${color}"></span>${hlText(paper.title, q)}${starIcon}${wifiIcon}
+    </div>
+    <div class="src-authors">${hlText(paper.authors, q)}</div>
+    <div class="src-meta">
+      <span style="color:${color}">${label}</span>
+      <span>·</span>
+      <span>${paper.type} · ${paper.length} min</span>
+      <span>·</span>
+      ${sessionInfo}
+    </div>
+  `;
+
+  // Click: scroll to the paper's session box in the panel, or highlight in sim
+  card.addEventListener("click", () => {
+    document.querySelectorAll(".search-result-card").forEach(c => c.classList.remove("active"));
+    card.classList.add("active");
+
+    if (paper.sessionId) {
+      // Scroll session box into view in the panel
+      const box = document.querySelector(`.session-box[data-session-id="${paper.sessionId}"]`);
+      if (box) {
+        box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        // Briefly highlight the paper card inside the session box
+        const pcard = box.querySelector(`.paper-card[data-paper-id="${paper.id}"]`);
+        if (pcard) {
+          pcard.classList.add("search-match");
+          setTimeout(() => pcard.classList.remove("search-match"), 2000);
+        }
+      }
+    } else {
+      // Flash the dot in the simulation
+      sim.flashPaper(paper.id);
+    }
   });
 
-  const total = matchingIds.size;
-  countEl.textContent = total ? `${total} match${total === 1 ? "" : "es"}` : "no matches";
+  return card;
 }
 
 function paperMatches(paper, query, fields) {
@@ -807,10 +950,39 @@ function paperMatches(paper, query, fields) {
   return terms.every(t => haystack.includes(t));
 }
 
+function hlText(text, query) {
+  if (!text || !query) return esc(text || "");
+  const terms = query.split(/\s+/).filter(Boolean);
+  let result = esc(text);
+  terms.forEach(term => {
+    const re = new RegExp(escRe(esc(term)), "gi");
+    result = result.replace(re, m => `<mark>${m}</mark>`);
+  });
+  return result;
+}
+
+function esc(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function escRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("export-btn").addEventListener("click", exportTSV);
+
+  // Flush deferred panel render when focus leaves any text field in the panel
+  document.getElementById("panel").addEventListener("focusout", () => {
+    requestAnimationFrame(() => {
+      if (_pendingPanelRender && !_isEditing()) {
+        renderPanel();
+        _pendingPanelRender = false;
+      }
+    });
+  }, true);
 });
 
 function exportTSV() {

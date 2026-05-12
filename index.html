@@ -18,17 +18,6 @@
     <span id="stat-unassigned">— papers unassigned</span>
   </div>
 
-  <div id="search-wrap">
-    <input type="text" id="search-input" placeholder="Search papers…" autocomplete="off" spellcheck="false">
-    <div id="search-fields">
-      <button class="field-toggle active" data-field="title">Title</button>
-      <button class="field-toggle active" data-field="authors">Authors</button>
-      <button class="field-toggle active" data-field="keywords">Keywords</button>
-      <button class="field-toggle" data-field="abstract">Abstract</button>
-    </div>
-    <span id="search-count"></span>
-  </div>
-
   <div id="toolbar-right">
     <button id="filter-toggle" class="toolbar-btn">Areas ▾</button>
     <span id="sync-status" class="sync syncing">⟳ Loading…</span>
@@ -56,12 +45,29 @@
 
   <!-- Session panel -->
   <div id="panel">
+
+    <!-- Search section (always visible at top of panel) -->
+    <div id="search-section">
+      <div id="search-input-row">
+        <input type="text" id="search-input" placeholder="Search papers…"
+               autocomplete="off" spellcheck="false">
+        <button id="search-clear" title="Clear">×</button>
+      </div>
+      <div id="search-checkboxes">
+        <label><input type="checkbox" data-field="title"    checked> Title</label>
+        <label><input type="checkbox" data-field="authors"  checked> Authors</label>
+        <label><input type="checkbox" data-field="keywords" checked> Keywords</label>
+        <label><input type="checkbox" data-field="abstract"        > Abstract</label>
+      </div>
+      <div id="search-results">
+        <!-- Populated by app.js -->
+      </div>
+    </div>
+
     <div id="session-list"></div>
   </div>
 
 </div>
-
-<!-- ── Attraction config drawer (appended to body dynamically) ─────────────── -->
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="config.js"></script>
