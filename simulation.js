@@ -208,6 +208,7 @@ class NIMESimulation {
     this._rebuildSim();
     this._drawAnchors();
     this._drawPapers();
+    if (this._searchIds) this.setSearch(this._searchIds);
     this._scheduleTerrainRender();
   }
 
@@ -435,6 +436,18 @@ class NIMESimulation {
     this.paperLayer.selectAll("g.paper-node")
       .attr("transform", d => `translate(${d.x ?? 0},${d.y ?? 0})`);
     if (Math.random() < 0.05) this._scheduleTerrainRender();
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────────────
+
+  setSearch(matchingIds) {
+    this._searchIds = matchingIds || null;
+    this.paperLayer.selectAll("g.paper-node")
+      .transition().duration(150)
+      .attr("opacity", d => {
+        if (!this._searchIds) return 1;
+        return this._searchIds.has(d.id) ? 1 : 0.1;
+      });
   }
 
   // ── Filter ────────────────────────────────────────────────────────────────────

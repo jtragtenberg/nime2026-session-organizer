@@ -18,6 +18,17 @@
     <span id="stat-unassigned">— papers unassigned</span>
   </div>
 
+  <div id="search-wrap">
+    <input type="text" id="search-input" placeholder="Search papers…" autocomplete="off" spellcheck="false">
+    <div id="search-fields">
+      <button class="field-toggle active" data-field="title">Title</button>
+      <button class="field-toggle active" data-field="authors">Authors</button>
+      <button class="field-toggle active" data-field="keywords">Keywords</button>
+      <button class="field-toggle" data-field="abstract">Abstract</button>
+    </div>
+    <span id="search-count"></span>
+  </div>
+
   <div id="toolbar-right">
     <button id="filter-toggle" class="toolbar-btn">Areas ▾</button>
     <span id="sync-status" class="sync syncing">⟳ Loading…</span>

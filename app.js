@@ -11,7 +11,9 @@ let state = {
 let sim          = null;
 let pollTimer    = null;
 let syncStatus   = { ts: 0, ok: true };
-let activeFilter = new Set(Object.keys(AREA_COLORS)); // all areas active
+let activeFilter = new Set(Object.keys(AREA_COLORS));
+let searchQuery  = "";
+let searchFields = new Set(["title", "authors", "keywords"]);
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
 
@@ -28,6 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch {}
   }
 
+  initSearch();
   poll();
   pollTimer = setInterval(poll, POLL_INTERVAL_MS);
 });
@@ -175,6 +178,9 @@ function renderPanel() {
 
     container.appendChild(slotEl);
   }
+
+  // Re-apply search highlighting after panel re-render
+  if (searchQuery) applySearch();
 }
 
 function renderSessionBox(session) {
@@ -719,6 +725,86 @@ function updateGlobalStats() {
     `${assignedMin} / ${TOTAL_AVAILABLE_MIN} min assigned`;
   document.getElementById("stat-unassigned").textContent =
     `${unassigned.length} papers unassigned (${unassMin} min)`;
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+function initSearch() {
+  const input = document.getElementById("search-input");
+
+  input.addEventListener("input", () => {
+    searchQuery = input.value.trim().toLowerCase();
+    applySearch();
+  });
+
+  // Clear on Escape
+  input.addEventListener("keydown", e => {
+    if (e.key === "Escape") {
+      input.value = "";
+      searchQuery = "";
+      applySearch();
+    }
+  });
+
+  document.querySelectorAll(".field-toggle").forEach(btn => {
+    const field = btn.dataset.field;
+    if (btn.classList.contains("active")) searchFields.add(field);
+
+    btn.addEventListener("click", () => {
+      if (searchFields.has(field)) {
+        if (searchFields.size > 1) {
+          searchFields.delete(field);
+          btn.classList.remove("active");
+        }
+      } else {
+        searchFields.add(field);
+        btn.classList.add("active");
+      }
+      applySearch();
+    });
+  });
+}
+
+function applySearch() {
+  const countEl = document.getElementById("search-count");
+
+  if (!searchQuery) {
+    sim.setSearch(null);
+    document.querySelectorAll(".paper-card").forEach(c => {
+      c.classList.remove("search-dim", "search-match");
+    });
+    countEl.textContent = "";
+    return;
+  }
+
+  const matchingIds = new Set();
+  for (const paper of state.papers) {
+    if (paperMatches(paper, searchQuery, searchFields)) {
+      matchingIds.add(paper.id);
+    }
+  }
+
+  sim.setSearch(matchingIds);
+
+  document.querySelectorAll(".paper-card").forEach(card => {
+    const hit = matchingIds.has(card.dataset.paperId);
+    card.classList.toggle("search-dim",  !hit);
+    card.classList.toggle("search-match", hit);
+  });
+
+  const total = matchingIds.size;
+  countEl.textContent = total ? `${total} match${total === 1 ? "" : "es"}` : "no matches";
+}
+
+function paperMatches(paper, query, fields) {
+  const terms = query.split(/\s+/).filter(Boolean);
+  const haystack = [
+    fields.has("title")    ? (paper.title    || "") : "",
+    fields.has("authors")  ? (paper.authors  || "") : "",
+    fields.has("abstract") ? (paper.abstract || "") : "",
+    fields.has("keywords") ? (paper.keywords || "") : "",
+  ].join(" ").toLowerCase();
+  return terms.every(t => haystack.includes(t));
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────

@@ -45,6 +45,43 @@ html, body {
 
 #toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
+/* ── Search ──────────────────────────────────────────────────────────────────── */
+
+#search-wrap {
+  display: flex; align-items: center; gap: 6px;
+  flex: 1; max-width: 480px;
+}
+
+#search-input {
+  flex: 1; background: #21262d; border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px; padding: 4px 10px;
+  font-size: 11px; outline: none; min-width: 120px;
+}
+#search-input:focus { border-color: var(--accent); }
+#search-input::placeholder { color: #484f58; }
+
+#search-fields { display: flex; gap: 3px; flex-shrink: 0; }
+
+.field-toggle {
+  background: none; border: 1px solid var(--border);
+  color: #484f58; border-radius: 4px; padding: 3px 7px;
+  font-size: 10px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+}
+.field-toggle.active {
+  border-color: var(--accent); color: var(--accent);
+  background: rgba(88,166,255,0.08);
+}
+.field-toggle:hover { border-color: var(--muted); color: var(--muted); }
+.field-toggle.active:hover { border-color: var(--accent); }
+
+#search-count {
+  font-size: 10px; color: var(--muted); white-space: nowrap; flex-shrink: 0;
+}
+
+/* Paper card search states */
+.paper-card.search-dim  { opacity: 0.18; }
+.paper-card.search-match { outline: 1px solid rgba(88,166,255,0.5); }
+
 .toolbar-btn {
   background: var(--surface); border: 1px solid var(--border);
   color: var(--text); border-radius: 6px; padding: 4px 10px;
