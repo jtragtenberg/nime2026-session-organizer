@@ -140,6 +140,33 @@ mark {
 .sync.syncing { color: var(--muted); }
 .sync.error   { color: var(--danger); }
 
+/* ── Forces panel ────────────────────────────────────────────────────────────── */
+
+#forces-panel {
+  position: fixed; top: var(--toolbar-h); left: 0; right: 0;
+  background: rgba(22,27,34,0.98); border-bottom: 1px solid var(--border);
+  z-index: 90; padding: 0 16px;
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+}
+#forces-panel.open { max-height: 240px; padding: 10px 16px; }
+
+.force-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 6px;
+}
+.force-row label {
+  font-size: 10px; color: var(--muted); width: 160px; flex-shrink: 0;
+}
+.force-row input[type=range] {
+  flex: 1; accent-color: var(--accent); cursor: pointer;
+  height: 3px;
+}
+.force-val {
+  font-size: 10px; color: var(--text); width: 36px;
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+
 /* ── Filter panel ────────────────────────────────────────────────────────────── */
 
 #filter-panel {

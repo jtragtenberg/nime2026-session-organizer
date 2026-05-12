@@ -18,6 +18,16 @@ class NIMESimulation {
     this.hoveredSession = null;
     this.transform    = d3.zoomIdentity;
 
+    // Force parameters (tunable via sliders)
+    this.ppStrength = 0.06;
+    this.ppDist     = 90;
+    this.psStrength = 0.55;
+    this.charge     = -28;
+
+    // Paper-paper bonds (Cmd/Ctrl+click)
+    this._bonds      = this._loadBonds();
+    this._bindSource = null; // paper id waiting for a second click
+
     this._buildDOM();
     this._buildTerrain();
   }
@@ -54,7 +64,10 @@ class NIMESimulation {
         const paperId = e.dataTransfer.getData("text/plain");
         if (paperId) this.onAssign(paperId, null); // null = unassign
       })
-      .on("click.popup", () => this._hidePaperPopup());
+      .on("click.popup", () => {
+        this._hidePaperPopup();
+        if (this._bindSource) { this._bindSource = null; this._drawPapers(); }
+      });
 
     // Floating paper-detail popup (positioned inside canvas-wrap)
     this._paperPopup = document.createElement("div");
@@ -130,8 +143,8 @@ class NIMESimulation {
     // Radius: fit inside canvas with padding
     const R = Math.min(W * 0.40, H * 0.38);
 
-    this.anchorW = 150;
-    this.anchorH = 50;
+    this.anchorW = 160;
+    this.anchorH = 72;
 
     // 8 slots arranged so A sessions form the left semicircle,
     // B sessions mirror them on the right — each pair shares the same y.
@@ -257,6 +270,14 @@ class NIMESimulation {
       }
     }
 
+    // ── Explicit bonds (Cmd/Ctrl+click) ──────────────────────────────────────────
+    const nodeIds = new Set(this.paperNodes.map(n => n.id));
+    for (const key of this._bonds) {
+      const [a, b] = key.split(":");
+      if (nodeIds.has(a) && nodeIds.has(b))
+        links.push({ source: a, target: b, weight: 1, ltype: "bond" });
+    }
+
     return links;
   }
 
@@ -269,13 +290,13 @@ class NIMESimulation {
 
     const linkForce = d3.forceLink(links)
       .id(d => d.id)
-      .distance(l => l.ltype === "pp" ? 65 : 100 - l.weight * 30)
-      .strength(l => l.ltype === "pp" ? l.weight * 0.18 : l.weight * 0.55);
+      .distance(l => l.ltype === "bond" ? 22 : l.ltype === "pp" ? this.ppDist : 100 - l.weight * 30)
+      .strength(l => l.ltype === "bond" ? 0.9 : l.ltype === "pp" ? l.weight * this.ppStrength : l.weight * this.psStrength);
 
     this.sim = d3.forceSimulation(nodes)
       .force("link", linkForce)
       .force("charge", d3.forceManyBody()
-        .strength(d => d.type === "session" ? 0 : -28))
+        .strength(d => d.type === "session" ? 0 : this.charge))
       // Always pull papers gently toward center — prevents wandering when no attractions
       .force("gravX", d3.forceX(cx).strength(d => d.type === "paper" ? 0.04 : 0))
       .force("gravY", d3.forceY(cy).strength(d => d.type === "paper" ? 0.04 : 0))
@@ -292,6 +313,47 @@ class NIMESimulation {
     this._drawLinks();
   }
 
+  // ── Bond helpers ──────────────────────────────────────────────────────────────
+
+  _bondKey(a, b) { return [a, b].sort().join(":"); }
+
+  _loadBonds() {
+    try { return new Set(JSON.parse(localStorage.getItem("nime2026-bonds") || "[]")); }
+    catch { return new Set(); }
+  }
+
+  _saveBonds() {
+    localStorage.setItem("nime2026-bonds", JSON.stringify([...this._bonds]));
+  }
+
+  _handleBind(paperId) {
+    if (this._bindSource === null) {
+      this._bindSource = paperId;
+    } else if (this._bindSource === paperId) {
+      this._bindSource = null;          // cancel
+    } else {
+      const key = this._bondKey(this._bindSource, paperId);
+      if (this._bonds.has(key)) this._bonds.delete(key);
+      else                      this._bonds.add(key);
+      this._saveBonds();
+      this._bindSource = null;
+      this._rebuildSim();
+    }
+    this._drawPapers();
+  }
+
+  refreshAnchorDots() {
+    this._drawAnchors();
+  }
+
+  setForceParams({ ppStrength, ppDist, psStrength, charge } = {}) {
+    if (ppStrength !== undefined) this.ppStrength = ppStrength;
+    if (ppDist     !== undefined) this.ppDist     = ppDist;
+    if (psStrength !== undefined) this.psStrength = psStrength;
+    if (charge     !== undefined) this.charge     = charge;
+    this._rebuildSim();
+  }
+
   _drawLinks() {
     this.linkLayer.selectAll("line.attraction-link")
       .data((this._resolvedLinks || []).filter(l => l.ltype === "ps"), (d, i) => i)
@@ -301,6 +363,15 @@ class NIMESimulation {
       .attr("stroke-opacity", l => 0.12 + l.weight * 0.25)
       .attr("stroke-width", l => 0.6 + l.weight * 0.7)
       .attr("stroke-dasharray", "4,5");
+
+    this.linkLayer.selectAll("line.bond-link")
+      .data((this._resolvedLinks || []).filter(l => l.ltype === "bond"), (d, i) => i)
+      .join("line")
+      .attr("class", "bond-link")
+      .attr("stroke", "#e3b341")
+      .attr("stroke-opacity", 0.9)
+      .attr("stroke-width", 2)
+      .attr("stroke-linecap", "round");
   }
 
   reheat() {
@@ -311,17 +382,20 @@ class NIMESimulation {
 
   _drawAnchors() {
     const self = this;
+    const AW = this.anchorW, AH = this.anchorH;
+    const DOT_R = 4, DOT_GAP = 10, DOT_Y = AH / 2 - 11; // y relative to anchor center
+
     const sel = this.anchorLayer.selectAll("g.anchor")
       .data(this.sessionAnchors, d => d.id)
       .join(enter => {
         const g = enter.append("g").attr("class", "anchor").style("cursor", "pointer");
-        g.append("rect")
-          .attr("rx", 10).attr("ry", 10)
-          .attr("width", this.anchorW).attr("height", this.anchorH)
-          .attr("x", -this.anchorW / 2).attr("y", -this.anchorH / 2);
+        g.append("rect").attr("rx", 10).attr("ry", 10)
+          .attr("width", AW).attr("height", AH)
+          .attr("x", -AW / 2).attr("y", -AH / 2);
         g.append("text").attr("class", "anchor-id");
         g.append("text").attr("class", "anchor-name");
         g.append("text").attr("class", "anchor-time");
+        g.append("g").attr("class", "anchor-dots");
 
         g.on("click", (e, d) => {
           e.stopPropagation();
@@ -345,25 +419,46 @@ class NIMESimulation {
 
     sel.select(".anchor-id")
       .attr("text-anchor", "middle")
-      .attr("y", -14)
-      .attr("font-size", "11px")
-      .attr("font-weight", "700")
+      .attr("y", -AH / 2 + 13)
+      .attr("font-size", "11px").attr("font-weight", "700")
       .attr("fill", "#8b949e")
       .text(d => d.id);
 
     sel.select(".anchor-name")
       .attr("text-anchor", "middle")
-      .attr("y", 4)
-      .attr("font-size", "10px")
-      .attr("fill", "#e6edf3")
-      .text(d => truncate(d.name || "—", 22));
+      .attr("y", -AH / 2 + 28)
+      .attr("font-size", "10px").attr("fill", "#e6edf3")
+      .text(d => truncate(d.name || "—", 24));
 
     sel.select(".anchor-time")
       .attr("text-anchor", "middle")
-      .attr("y", 20)
-      .attr("font-size", "9px")
-      .attr("fill", "#484f58")
+      .attr("y", -AH / 2 + 42)
+      .attr("font-size", "9px").attr("fill", "#484f58")
       .text(d => d.timeLimit + " min");
+
+    // Assigned paper dots
+    sel.select(".anchor-dots").each(function(d) {
+      const assigned = self.papers.filter(p => p.sessionId === d.id);
+      const maxDots  = Math.floor((AW - 16) / DOT_GAP);
+      const shown    = assigned.slice(0, maxDots);
+      const totalW   = (shown.length - 1) * DOT_GAP;
+      const startX   = -totalW / 2;
+
+      const dots = d3.select(this).selectAll("circle")
+        .data(shown, p => p.id);
+
+      dots.enter().append("circle")
+        .merge(dots)
+        .attr("r", DOT_R)
+        .attr("cx", (_, i) => startX + i * DOT_GAP)
+        .attr("cy", DOT_Y)
+        .attr("fill", p => AREA_COLORS[p.primary] || "#888")
+        .attr("fill-opacity", 0.85)
+        .attr("stroke", "#0d1117")
+        .attr("stroke-width", 0.8);
+
+      dots.exit().remove();
+    });
   }
 
   updateAnchorLabels(sessions) {
@@ -395,6 +490,7 @@ class NIMESimulation {
             .style("cursor", "grab")
             .call(this._drag());
 
+          g.append("circle").attr("class", "bond-ring");   // bond / bind-mode indicator
           g.append("circle").attr("class", "paper-circle")
             .attr("stroke", "#0d1117").attr("stroke-width", 1.2);
 
@@ -413,10 +509,15 @@ class NIMESimulation {
             .on("mousemove", (e)    => self._moveTooltip(e))
             .on("mouseout",  ()     => self._hideTooltip());
 
-          // Click → show detail popup
+          // Click → popup; Cmd/Ctrl+click → bond
           g.on("click", (e, d) => {
             if (self._wasDragged) return;
             e.stopPropagation();
+            if (e.metaKey || e.ctrlKey) {
+              self._hideTooltip();
+              self._handleBind(d.id);
+              return;
+            }
             self._hideTooltip();
             self._showPaperPopup(e, d);
           });
@@ -426,6 +527,19 @@ class NIMESimulation {
         update => update,
         exit   => exit.remove()
       );
+
+    // Bond ring: glows amber when this paper is the bind-source,
+    // stays as a faint ring if the paper has any active bonds
+    sel.select(".bond-ring")
+      .attr("r", d => this._paperRadius(d) + 4)
+      .attr("fill", "none")
+      .attr("stroke", d => d.id === this._bindSource ? "#e3b341" : "#e3b341")
+      .attr("stroke-width", d => d.id === this._bindSource ? 2.5 : 1.5)
+      .attr("stroke-opacity", d => {
+        if (d.id === this._bindSource) return 1;
+        const hasBond = [...this._bonds].some(k => k.split(":").includes(d.id));
+        return hasBond ? 0.55 : 0;
+      });
 
     sel.select(".paper-circle")
       .attr("r",    d => this._paperRadius(d))
@@ -500,6 +614,11 @@ class NIMESimulation {
       .attr("y1", l => l.source.y ?? 0)
       .attr("x2", l => l.target.fx ?? l.target.x ?? 0)
       .attr("y2", l => l.target.fy ?? l.target.y ?? 0);
+    this.linkLayer.selectAll("line.bond-link")
+      .attr("x1", l => l.source.x ?? 0)
+      .attr("y1", l => l.source.y ?? 0)
+      .attr("x2", l => l.target.x ?? 0)
+      .attr("y2", l => l.target.y ?? 0);
     if (Math.random() < 0.05) this._scheduleTerrainRender();
   }
 

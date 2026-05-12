@@ -20,6 +20,7 @@
 
   <div id="toolbar-right">
     <button id="filter-toggle" class="toolbar-btn">Areas ▾</button>
+    <button id="forces-toggle" class="toolbar-btn">Forces ▾</button>
     <span id="sync-status" class="sync syncing">⟳ Loading…</span>
     <button id="export-btn" class="toolbar-btn">⤓ Export</button>
   </div>
@@ -32,6 +33,30 @@
     <button id="filter-none" class="tiny-btn">None</button>
   </div>
   <div id="filter-pills"></div>
+</div>
+
+<!-- ── Forces panel (dropdown) ──────────────────────────────────────────────── -->
+<div id="forces-panel">
+  <div class="force-row">
+    <label>Area clustering strength</label>
+    <input type="range" id="fp-pp-strength" min="0" max="0.5" step="0.01" value="0.06">
+    <span class="force-val" id="fv-pp-strength">0.06</span>
+  </div>
+  <div class="force-row">
+    <label>Cluster rest distance</label>
+    <input type="range" id="fp-pp-dist" min="20" max="250" step="5" value="90">
+    <span class="force-val" id="fv-pp-dist">90</span>
+  </div>
+  <div class="force-row">
+    <label>Session attraction</label>
+    <input type="range" id="fp-ps-strength" min="0" max="1" step="0.05" value="0.55">
+    <span class="force-val" id="fv-ps-strength">0.55</span>
+  </div>
+  <div class="force-row">
+    <label>Paper repulsion</label>
+    <input type="range" id="fp-charge" min="-120" max="0" step="4" value="-28">
+    <span class="force-val" id="fv-charge">-28</span>
+  </div>
 </div>
 
 <!-- ── Main layout ───────────────────────────────────────────────────────────── -->

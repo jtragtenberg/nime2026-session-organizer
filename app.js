@@ -157,6 +157,7 @@ async function handleAssign(paperId, sessionId) {
   } else {
     sim.restorePaper(paper);
   }
+  sim.refreshAnchorDots();
   renderPanel();
   updateGlobalStats();
 
@@ -847,6 +848,30 @@ function toggleFilter(area, pill) {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("filter-toggle").addEventListener("click", () => {
     document.getElementById("filter-panel").classList.toggle("open");
+    document.getElementById("forces-panel").classList.remove("open");
+  });
+
+  // ── Forces panel ────────────────────────────────────────────────────────────
+  document.getElementById("forces-toggle").addEventListener("click", () => {
+    document.getElementById("forces-panel").classList.toggle("open");
+    document.getElementById("filter-panel").classList.remove("open");
+  });
+
+  const forceSliders = [
+    { id: "fp-pp-strength", val: "fv-pp-strength", key: "ppStrength", fmt: v => (+v).toFixed(2) },
+    { id: "fp-pp-dist",     val: "fv-pp-dist",     key: "ppDist",     fmt: v => Math.round(v)   },
+    { id: "fp-ps-strength", val: "fv-ps-strength", key: "psStrength", fmt: v => (+v).toFixed(2) },
+    { id: "fp-charge",      val: "fv-charge",      key: "charge",     fmt: v => Math.round(v)   },
+  ];
+
+  forceSliders.forEach(({ id, val, key, fmt }) => {
+    const slider = document.getElementById(id);
+    const label  = document.getElementById(val);
+    slider.addEventListener("input", () => {
+      const v = parseFloat(slider.value);
+      label.textContent = fmt(v);
+      sim.setForceParams({ [key]: v });
+    });
   });
 
   document.getElementById("filter-all").addEventListener("click", () => {
