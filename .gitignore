@@ -1,0 +1,5 @@
+papers-data.tsv
+sessions-data.tsv
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIME 2026 — Session Organizer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── Toolbar ──────────────────────────────────────────────────────────────── -->
+<header id="toolbar">
+  <span id="app-title">NIME 2026 Session Organizer</span>
+
+  <div id="stats-bar">
+    <span id="stat-assigned">— min assigned</span>
+    <span class="stats-sep">·</span>
+    <span id="stat-unassigned">— papers unassigned</span>
+  </div>
+
+  <div id="toolbar-right">
+    <button id="filter-toggle" class="toolbar-btn">Areas ▾</button>
+    <span id="sync-status" class="sync syncing">⟳ Loading…</span>
+    <button id="export-btn" class="toolbar-btn">⤓ Export</button>
+  </div>
+</header>
+
+<!-- ── Filter panel (dropdown) ──────────────────────────────────────────────── -->
+<div id="filter-panel">
+  <div id="filter-controls">
+    <button id="filter-all"  class="tiny-btn">All</button>
+    <button id="filter-none" class="tiny-btn">None</button>
+  </div>
+  <div id="filter-pills"></div>
+</div>
+
+<!-- ── Main layout ───────────────────────────────────────────────────────────── -->
+<div id="main">
+
+  <!-- Simulation canvas -->
+  <div id="canvas-wrap">
+    <svg id="sim-svg"></svg>
+    <div id="sim-tooltip"></div>
+  </div>
+
+  <!-- Session panel -->
+  <div id="panel">
+    <div id="session-list"></div>
+  </div>
+
+</div>
+
+<!-- ── Attraction config drawer (appended to body dynamically) ─────────────── -->
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="config.js"></script>
+<script src="simulation.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
