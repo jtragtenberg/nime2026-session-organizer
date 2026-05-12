@@ -223,10 +223,9 @@ class NIMESimulation {
 
   _buildLinks() {
     const links = [];
-    const sessionMap = Object.fromEntries(this.sessionAnchors.map(s => [s.id, s]));
 
+    // ── Paper → Session attraction links ──────────────────────────────────────
     for (const paper of this.paperNodes) {
-      let hasLink = false;
       for (const session of this.sessionAnchors) {
         let weight = 0;
         for (const attr of session.attractions) {
@@ -236,12 +235,28 @@ class NIMESimulation {
             weight = Math.max(weight, attr.secondaryWeight);
           }
         }
-        if (weight > 0) {
-          links.push({ source: paper.id, target: session.id, weight });
-          hasLink = true;
-        }
+        if (weight > 0) links.push({ source: paper.id, target: session.id, weight, ltype: "ps" });
       }
     }
+
+    // ── Paper → Paper same-area clustering links ───────────────────────────────
+    for (let i = 0; i < this.paperNodes.length; i++) {
+      const a = this.paperNodes[i];
+      for (let j = i + 1; j < this.paperNodes.length; j++) {
+        const b = this.paperNodes[j];
+        let weight = 0;
+        if (a.primary && a.primary === b.primary) {
+          weight = 1.0;                                        // same primary area
+        } else {
+          if (b.secondary.includes(a.primary)) weight = Math.max(weight, 0.35); // a-primary in b-secondary
+          if (a.secondary.includes(b.primary)) weight = Math.max(weight, 0.35); // b-primary in a-secondary
+          for (const s of a.secondary)
+            if (b.secondary.includes(s)) weight = Math.max(weight, 0.2);        // shared secondary
+        }
+        if (weight > 0) links.push({ source: a.id, target: b.id, weight, ltype: "pp" });
+      }
+    }
+
     return links;
   }
 
@@ -254,8 +269,8 @@ class NIMESimulation {
 
     const linkForce = d3.forceLink(links)
       .id(d => d.id)
-      .distance(l => 100 - l.weight * 30)
-      .strength(l => l.weight * 0.55);
+      .distance(l => l.ltype === "pp" ? 65 : 100 - l.weight * 30)
+      .strength(l => l.ltype === "pp" ? l.weight * 0.18 : l.weight * 0.55);
 
     this.sim = d3.forceSimulation(nodes)
       .force("link", linkForce)
@@ -279,7 +294,7 @@ class NIMESimulation {
 
   _drawLinks() {
     this.linkLayer.selectAll("line.attraction-link")
-      .data(this._resolvedLinks || [], (d, i) => i)
+      .data((this._resolvedLinks || []).filter(l => l.ltype === "ps"), (d, i) => i)
       .join("line")
       .attr("class", "attraction-link")
       .attr("stroke", l => AREA_COLORS[l.source.primary] || "#888")
