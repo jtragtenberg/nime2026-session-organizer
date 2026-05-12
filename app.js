@@ -16,6 +16,29 @@ let searchQuery         = "";
 let searchFields        = new Set(["title", "authors", "keywords"]);
 let searchResultIndex   = -1;
 let _pendingPanelRender = false;
+let _draggingPaperId    = null;
+let _draggingSessionId  = null;
+
+// ── Paper order persistence ───────────────────────────────────────────────────
+
+function getPaperOrder(sessionId) {
+  try { return (JSON.parse(localStorage.getItem("nime2026-order") || "{}")[sessionId]) || []; }
+  catch { return []; }
+}
+function savePaperOrder(sessionId, ids) {
+  try {
+    const all = JSON.parse(localStorage.getItem("nime2026-order") || "{}");
+    all[sessionId] = ids;
+    localStorage.setItem("nime2026-order", JSON.stringify(all));
+  } catch {}
+}
+function sortedSessionPapers(sessionId) {
+  const papers = state.papers.filter(p => p.sessionId === sessionId);
+  const order  = getPaperOrder(sessionId);
+  if (!order.length) return papers;
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return [...papers].sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : 999) - (rank.has(b.id) ? rank.get(b.id) : 999));
+}
 
 function _isEditing() {
   const el = document.activeElement;
@@ -211,7 +234,7 @@ function renderPanel() {
 }
 
 function renderSessionBox(session) {
-  const papers = state.papers.filter(p => p.sessionId === session.id);
+  const papers = sortedSessionPapers(session.id);
   const totalTime = papers.reduce((s, p) => s + (p.length || 0), 0);
   const starCount = papers.filter(p => p.featured).length;
   const pct  = Math.min(100, (totalTime / session.timeLimit) * 100);
@@ -314,8 +337,49 @@ function renderPaperCard(paper, session) {
   card.addEventListener("dragstart", e => {
     e.dataTransfer.setData("text/plain", paper.id);
     card.classList.add("dragging");
+    _draggingPaperId   = paper.id;
+    _draggingSessionId = session ? session.id : null;
   });
-  card.addEventListener("dragend", () => card.classList.remove("dragging"));
+  card.addEventListener("dragend", () => {
+    card.classList.remove("dragging");
+    _draggingPaperId   = null;
+    _draggingSessionId = null;
+    document.querySelectorAll(".paper-card.drop-above,.paper-card.drop-below")
+      .forEach(c => c.classList.remove("drop-above", "drop-below"));
+  });
+
+  // ── Within-session reorder ───────────────────────────────────────────────────
+  card.addEventListener("dragover", e => {
+    if (!_draggingPaperId || _draggingPaperId === paper.id) return;
+    if (_draggingSessionId !== (session ? session.id : null)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const mid = card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2;
+    document.querySelectorAll(".paper-card.drop-above,.paper-card.drop-below")
+      .forEach(c => { if (c !== card) c.classList.remove("drop-above", "drop-below"); });
+    card.classList.toggle("drop-above", e.clientY < mid);
+    card.classList.toggle("drop-below", e.clientY >= mid);
+  });
+  card.addEventListener("dragleave", e => {
+    if (!e.relatedTarget || !card.contains(e.relatedTarget))
+      card.classList.remove("drop-above", "drop-below");
+  });
+  card.addEventListener("drop", e => {
+    const draggedId = _draggingPaperId;
+    if (!draggedId || !session || _draggingSessionId !== session.id || draggedId === paper.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const ordered = sortedSessionPapers(session.id);
+    const fromIdx = ordered.findIndex(p => p.id === draggedId);
+    if (fromIdx === -1) return;
+    const [moved] = ordered.splice(fromIdx, 1);
+    const toIdx   = ordered.findIndex(p => p.id === paper.id);
+    const before  = e.clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2;
+    ordered.splice(before ? toIdx : toIdx + 1, 0, moved);
+    savePaperOrder(session.id, ordered.map(p => p.id));
+    card.classList.remove("drop-above", "drop-below");
+    renderPanel();
+  });
 
   // ── Front face ──────────────────────────────────────────────────────────────
   const front = document.createElement("div");

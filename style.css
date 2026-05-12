@@ -207,6 +207,40 @@ mark {
   flex-shrink: 0;
 }
 
+/* ── Paper detail popup (canvas) ────────────────────────────────────────────── */
+
+.paper-popup {
+  position: absolute; z-index: 150; width: 300px;
+  background: #1c2128; border: 1px solid var(--border);
+  border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.65);
+  overflow: hidden; pointer-events: all;
+}
+.pp-header {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px 6px; border-bottom: 1px solid var(--border);
+}
+.pp-bar   { flex-shrink: 0; min-height: 20px; align-self: stretch; border-radius: 2px; }
+.pp-title { flex: 1; font-size: 11px; font-weight: 600; color: var(--text); line-height: 1.4; }
+.pp-close {
+  background: none; border: none; color: var(--muted); font-size: 16px;
+  cursor: pointer; padding: 0 2px; line-height: 1; flex-shrink: 0; border-radius: 3px;
+}
+.pp-close:hover { color: var(--danger); }
+.pp-authors { font-size: 10px; color: var(--muted); padding: 5px 10px 2px; }
+.pp-meta    { font-size: 9.5px; padding: 0 10px 5px; }
+.pp-keywords {
+  padding: 4px 10px; display: flex; flex-wrap: wrap; gap: 3px;
+  border-bottom: 1px solid var(--border);
+}
+.pp-kw {
+  background: rgba(80,200,120,0.08); border: 1px solid rgba(80,200,120,0.25);
+  color: #7ee787; border-radius: 4px; padding: 1px 5px; font-size: 9px;
+}
+.pp-abstract {
+  font-size: 10.5px; color: var(--muted); line-height: 1.6;
+  padding: 6px 10px 10px; max-height: 220px; overflow-y: auto;
+}
+
 /* ── Tooltip ─────────────────────────────────────────────────────────────────── */
 
 #sim-tooltip {
@@ -244,9 +278,22 @@ mark {
 .session-box {
   flex: 1; background: var(--bg); border: 1px solid var(--border);
   border-radius: 8px; overflow: hidden; min-width: 0;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 .session-box:hover { border-color: #484f58; }
+
+@keyframes highlight-flash {
+  0%   { box-shadow: 0 0 0 3px #58a6ff99; }
+  100% { box-shadow: 0 0 0 0px transparent; }
+}
+.session-box.highlight-flash {
+  border-color: var(--accent);
+  animation: highlight-flash 0.9s ease-out forwards;
+}
+
+/* ── Paper drag-to-reorder drop indicators ───────────────────────────────────── */
+.paper-card.drop-above { border-top: 2px solid var(--accent); }
+.paper-card.drop-below { border-bottom: 2px solid var(--accent); }
 
 /* ── Session header ──────────────────────────────────────────────────────────── */
 

@@ -53,7 +53,16 @@ class NIMESimulation {
         e.preventDefault();
         const paperId = e.dataTransfer.getData("text/plain");
         if (paperId) this.onAssign(paperId, null); // null = unassign
-      });
+      })
+      .on("click.popup", () => this._hidePaperPopup());
+
+    // Floating paper-detail popup (positioned inside canvas-wrap)
+    this._paperPopup = document.createElement("div");
+    this._paperPopup.className = "paper-popup";
+    this._paperPopup.style.display = "none";
+    this.svgEl.parentElement.appendChild(this._paperPopup);
+
+    this._wasDragged = false;
   }
 
   _buildTerrain() {
@@ -290,7 +299,7 @@ class NIMESimulation {
     const sel = this.anchorLayer.selectAll("g.anchor")
       .data(this.sessionAnchors, d => d.id)
       .join(enter => {
-        const g = enter.append("g").attr("class", "anchor");
+        const g = enter.append("g").attr("class", "anchor").style("cursor", "pointer");
         g.append("rect")
           .attr("rx", 10).attr("ry", 10)
           .attr("width", this.anchorW).attr("height", this.anchorH)
@@ -298,6 +307,16 @@ class NIMESimulation {
         g.append("text").attr("class", "anchor-id");
         g.append("text").attr("class", "anchor-name");
         g.append("text").attr("class", "anchor-time");
+
+        g.on("click", (e, d) => {
+          e.stopPropagation();
+          const box = document.querySelector(`.session-box[data-session-id="${d.id}"]`);
+          if (!box) return;
+          box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          box.classList.add("highlight-flash");
+          setTimeout(() => box.classList.remove("highlight-flash"), 900);
+        });
+
         return g;
       });
 
@@ -374,10 +393,18 @@ class NIMESimulation {
             .attr("text-anchor", "middle").attr("dominant-baseline", "central")
             .attr("font-size", "7px");
 
-          // Tooltip
+          // Tooltip on hover
           g.on("mouseover", (e, d) => self._showTooltip(e, d))
             .on("mousemove", (e)    => self._moveTooltip(e))
             .on("mouseout",  ()     => self._hideTooltip());
+
+          // Click → show detail popup
+          g.on("click", (e, d) => {
+            if (self._wasDragged) return;
+            e.stopPropagation();
+            self._hideTooltip();
+            self._showPaperPopup(e, d);
+          });
 
           return g;
         },
@@ -407,11 +434,13 @@ class NIMESimulation {
 
     return d3.drag()
       .on("start", (e, d) => {
+        self._wasDragged = false;
         self.sim.alphaTarget(0.15).restart();
         d.fx = d.x; d.fy = d.y;
         d3.select(e.sourceEvent.target.closest("g.paper-node")).style("cursor", "grabbing");
       })
       .on("drag", (e, d) => {
+        self._wasDragged = true;
         d.fx = e.x; d.fy = e.y;
         hovered = self._nearestAnchor(e.x, e.y);
         self._highlightAnchor(hovered);
@@ -549,6 +578,55 @@ class NIMESimulation {
 
   _hideTooltip() {
     document.getElementById("sim-tooltip").style.display = "none";
+  }
+
+  // ── Paper detail popup ────────────────────────────────────────────────────────
+
+  _showPaperPopup(e, d) {
+    const color = AREA_COLORS[d.primary] || "#888";
+    const label = AREA_LABELS[d.primary] || d.primary;
+    const barW  = d.ptype === "Long" ? 12 : d.ptype === "Medium" ? 8 : 4;
+    const kws   = d.keywords ? d.keywords.split(/[;,]/).map(s => s.trim()).filter(Boolean) : [];
+
+    const kwHtml = kws.length
+      ? `<div class="pp-keywords">${kws.map(k => `<span class="pp-kw">${this._esc(k)}</span>`).join("")}</div>`
+      : "";
+
+    this._paperPopup.innerHTML = `
+      <div class="pp-header">
+        <span class="pp-bar" style="background:${color};width:${barW}px"></span>
+        <span class="pp-title">${this._esc(d.title)}</span>
+        <button class="pp-close">×</button>
+      </div>
+      <div class="pp-authors">${this._esc(d.authors)}</div>
+      <div class="pp-meta" style="color:${color}">${this._esc(label)} · ${d.ptype || ""} · ${d.length || ""} min</div>
+      ${kwHtml}
+      <div class="pp-abstract">${this._esc(d.abstract || "No abstract available.")}</div>
+    `;
+
+    this._paperPopup.querySelector(".pp-close").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this._hidePaperPopup();
+    });
+
+    const rect = this.svgEl.parentElement.getBoundingClientRect();
+    const mx   = e.sourceEvent ? e.sourceEvent.clientX : e.clientX;
+    const my   = e.sourceEvent ? e.sourceEvent.clientY : e.clientY;
+    const px   = mx - rect.left;
+    const py   = my - rect.top;
+
+    this._paperPopup.style.display = "block";
+    const popW = 300;
+    this._paperPopup.style.left = Math.min(Math.max(px + 14, 4), this.canvasW - popW - 4) + "px";
+    this._paperPopup.style.top  = Math.max(Math.min(py - 20, this.canvasH - 360), 4) + "px";
+  }
+
+  _hidePaperPopup() {
+    if (this._paperPopup) this._paperPopup.style.display = "none";
+  }
+
+  _esc(s) {
+    return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   // ── Resize ───────────────────────────────────────────────────────────────────
