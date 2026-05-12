@@ -116,23 +116,37 @@ class NIMESimulation {
 
   _computeAnchorPositions() {
     const W = this.canvasW, H = this.canvasH;
-    const SLOTS = [1, 2, 3, 4, 5, 7, 8, 9]; // skip slot 6
-    const rows  = SLOTS.length;
-    const cols  = 2;
-    const padX  = 60, padY = 50;
-    const colW  = (W - 2 * padX) / cols;
-    const rowH  = (H - 2 * padY) / rows;
-    this.anchorW = Math.min(colW - 30, 190);
-    this.anchorH = Math.min(rowH - 20, 70);
+    const cx = W / 2, cy = H / 2;
+
+    // Radius: fit inside canvas with padding
+    const R = Math.min(W * 0.40, H * 0.38);
+
+    this.anchorW = 150;
+    this.anchorH = 50;
+
+    // 8 slots arranged so A sessions form the left semicircle,
+    // B sessions mirror them on the right — each pair shares the same y.
+    // Angular span: 105° (top-left) → 255° (bottom-left) for A,
+    // mirrored as 75° → -75° for B.
+    const SLOTS = [1, 2, 3, 4, 5, 7, 8, 9];
+    const n     = SLOTS.length;
+    const gap   = Math.PI / 12;                   // 15° gap at top and bottom
+    const span  = Math.PI - 2 * gap;              // 150° usable arc
 
     const pos = {};
-    for (let ri = 0; ri < rows; ri++) {
-      const slot = SLOTS[ri];
-      const cx   = padX + colW * 0.5;
-      const cy   = padY + rowH * ri + rowH * 0.5;
-      pos[slot + "A"] = { x: cx, y: cy };
-      pos[slot + "B"] = { x: padX + colW + colW * 0.5, y: cy };
-    }
+    SLOTS.forEach((slot, i) => {
+      const alpha = Math.PI / 2 + gap + (span * i / (n - 1)); // left semicircle
+      const beta  = Math.PI - alpha;                           // mirror on right
+
+      pos[slot + "A"] = {
+        x: cx + R * Math.cos(alpha),
+        y: cy - R * Math.sin(alpha), // SVG y-axis flipped
+      };
+      pos[slot + "B"] = {
+        x: cx + R * Math.cos(beta),
+        y: cy - R * Math.sin(beta),
+      };
+    });
     return pos;
   }
 
@@ -224,21 +238,25 @@ class NIMESimulation {
   _rebuildSim() {
     if (this.sim) this.sim.stop();
 
+    const cx = this.canvasW / 2, cy = this.canvasH / 2;
     const nodes = [...this.sessionAnchors, ...this.paperNodes];
     const links = this._buildLinks();
 
     this.sim = d3.forceSimulation(nodes)
       .force("link", d3.forceLink(links)
         .id(d => d.id)
-        .distance(l => 120 - l.weight * 40)
-        .strength(l => l.weight * 0.6))
+        .distance(l => 100 - l.weight * 30)
+        .strength(l => l.weight * 0.55))
       .force("charge", d3.forceManyBody()
-        .strength(d => d.type === "session" ? 0 : -20))
+        .strength(d => d.type === "session" ? 0 : -28))
+      // Always pull papers gently toward center — prevents wandering when no attractions
+      .force("gravX", d3.forceX(cx).strength(d => d.type === "paper" ? 0.04 : 0))
+      .force("gravY", d3.forceY(cy).strength(d => d.type === "paper" ? 0.04 : 0))
+      // Hard collision: papers never overlap each other or session anchors
       .force("collide", d3.forceCollide()
-        .radius(d => d.type === "session" ? 50 : this._paperRadius(d) + 3)
-        .strength(0.7)
-        .iterations(2))
-      .force("center", d3.forceCenter(this.canvasW / 2, this.canvasH / 2).strength(0.02))
+        .radius(d => d.type === "session" ? 55 : this._paperRadius(d) + 4)
+        .strength(1.0)
+        .iterations(4))
       .alphaDecay(0.01)
       .on("tick", () => this._tick())
       .on("end",  () => this._scheduleTerrainRender());
