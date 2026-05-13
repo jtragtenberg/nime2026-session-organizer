@@ -226,11 +226,49 @@ mark {
 
 #sim-svg { display: block; width: 100%; height: 100%; }
 
+#panel-divider {
+  width: 14px; flex-shrink: 0;
+  background: var(--surface); border-left: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 10;
+  transition: background 0.15s;
+}
+#panel-divider:hover { background: #1f2630; }
+
+#panel-expand-btn {
+  background: none; border: none; color: var(--muted);
+  font-size: 13px; cursor: pointer; padding: 4px 0;
+  line-height: 1; user-select: none; pointer-events: none;
+  transition: color 0.15s, transform 0.25s;
+}
+#panel-divider:hover #panel-expand-btn { color: var(--accent); }
+
 #panel {
   width: var(--panel-w);
   background: var(--surface);
   border-left: 1px solid var(--border);
   overflow-y: auto;
+  flex-shrink: 0;
+  transition: width 0.25s ease;
+}
+
+/* ── Panel fullscreen mode ───────────────────────────────────────────────── */
+#main.panel-fullscreen #canvas-wrap { display: none; }
+#main.panel-fullscreen #panel { width: 100%; border-left: none; }
+#main.panel-fullscreen #panel-divider { border-left: none; border-right: 1px solid var(--border); }
+#main.panel-fullscreen #panel-expand-btn { transform: rotate(180deg); }
+
+#main.panel-fullscreen #session-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+}
+
+#main.panel-fullscreen .slot-group {
+  width: var(--panel-w);
+  margin-bottom: 0;
   flex-shrink: 0;
 }
 
@@ -402,7 +440,7 @@ mark {
 .paper-card-top {
   display: flex; align-items: center; gap: 5px;
   padding: 5px 6px; cursor: pointer; user-select: none;
-  min-height: 32px;
+  min-height: 38px;
 }
 
 .paper-bar {
@@ -425,9 +463,27 @@ mark {
 .paper-wifi.active { color: var(--wifi); }
 .paper-wifi:hover  { color: #60b0f0; }
 
-.paper-info { flex: 1; font-size: 10.5px; overflow: hidden; min-width: 0; }
-.paper-title  { color: var(--text); font-weight: 500; }
-.paper-authors { color: var(--muted); font-size: 9.5px; }
+.paper-info {
+  flex: 1; overflow: hidden; min-width: 0;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.paper-title {
+  color: var(--text); font-weight: 500; font-size: 10.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.paper-authors {
+  color: var(--muted); font-size: 9.5px;
+  white-space: normal; line-height: 1.35;
+}
+
+.paper-duration {
+  flex-shrink: 0; font-size: 9px; font-weight: 700;
+  padding: 2px 5px; border-radius: 4px; letter-spacing: .03em;
+  align-self: center;
+}
+.dur-short  { background: #1a2a3a; color: #79b8ff; }
+.dur-medium { background: #2e1f00; color: #f0a040; }
+.dur-long   { background: #3a1018; color: #ff7b72; }
 
 .unassign-btn {
   background: none; border: none; color: #484f58; font-size: 13px;

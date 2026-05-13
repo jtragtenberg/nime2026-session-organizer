@@ -18,6 +18,7 @@ let searchResultIndex   = -1;
 let _pendingPanelRender = false;
 let _draggingPaperId    = null;
 let _draggingSessionId  = null;
+let _frozenUntil        = 0;  // epoch ms — poll skips applyState while frozen
 
 // ── Paper order persistence ───────────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ async function poll() {
     if (!data.ok) throw new Error(data.error || "Read failed");
 
     const hash = JSON.stringify(data);
-    if (hash !== state.lastHash) {
+    if (hash !== state.lastHash && Date.now() >= _frozenUntil) {
       state.lastHash = hash;
       applyState(data);
       localStorage.setItem("nime2026-state", hash);
@@ -130,7 +131,7 @@ function applyState(data) {
   state.papers   = data.papers;
   state.sessions = data.sessions;
   sim.setData(data.papers, data.sessions);
-  if (_isEditing()) {
+  if (_isEditing() || _draggingPaperId || _draggingSessionId) {
     _pendingPanelRender = true;
   } else {
     renderPanel();
@@ -328,7 +329,7 @@ function renderSessionBox(session) {
 
 function renderPaperCard(paper, session) {
   const color    = AREA_COLORS[paper.primary] || "#888";
-  const barWidth = paper.ptype === "Long" ? 12 : paper.ptype === "Medium" ? 8 : 4;
+  const barWidth = paper.type === "Long" ? 12 : paper.type === "Medium" ? 8 : 4;
 
   const card = document.createElement("div");
   card.className = "paper-card";
@@ -421,7 +422,11 @@ function renderPaperCard(paper, session) {
 
   const info = document.createElement("span");
   info.className = "paper-info";
-  info.innerHTML = `<span class="paper-title">${truncate(paper.title, 60)}</span><span class="paper-authors"> · ${truncate(paper.authors, 40)}</span>`;
+  info.innerHTML = `<span class="paper-title">${truncate(paper.title, 70)}</span><span class="paper-authors">${paper.authors || ""}</span>`;
+
+  const durBadge = document.createElement("span");
+  durBadge.className = `paper-duration dur-${(paper.type || "short").toLowerCase()}`;
+  durBadge.textContent = `${paper.length}′`;
 
   const unBtn = document.createElement("button");
   unBtn.className = "unassign-btn";
@@ -431,7 +436,7 @@ function renderPaperCard(paper, session) {
 
   const topRow = document.createElement("div");
   topRow.className = "paper-card-top";
-  topRow.append(bar, icons, info, unBtn);
+  topRow.append(bar, icons, info, durBadge, unBtn);
   front.appendChild(topRow);
 
   // ── Back face ───────────────────────────────────────────────────────────────
@@ -1063,6 +1068,17 @@ function escRe(s) {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("export-btn").addEventListener("click", exportTSV);
 
+  // Panel expand/collapse toggle
+  document.getElementById("panel-divider").addEventListener("click", () => {
+    const main = document.getElementById("main");
+    main.classList.toggle("panel-fullscreen");
+    // Let the CSS transition finish before measuring canvas size
+    setTimeout(() => {
+      const wrap = document.getElementById("canvas-wrap");
+      if (sim) sim.resize(wrap.offsetWidth, wrap.offsetHeight);
+    }, 280);
+  });
+
   // Flush deferred panel render when focus leaves any text field in the panel
   document.getElementById("panel").addEventListener("focusout", () => {
     requestAnimationFrame(() => {
@@ -1108,10 +1124,13 @@ function exportTSV() {
 // ── Sheet write helper ────────────────────────────────────────────────────────
 
 async function sheetPost(params) {
+  _frozenUntil = Date.now() + 15000; // freeze polls while write is in flight
   try {
     await fetch(APPS_SCRIPT_URL + "?" + params.toString(), { redirect: "follow" });
+    _frozenUntil = Date.now() + 6000; // grace period after write confirms
   } catch (err) {
     console.warn("Sheet write error:", err);
+    _frozenUntil = 0;
   }
 }
 

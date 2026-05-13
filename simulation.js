@@ -177,6 +177,34 @@ class NIMESimulation {
   setData(papers, sessions) {
     this.papers   = papers;
     this.sessions = sessions;
+
+    // If the unassigned+filtered paper set is unchanged, skip full rebuild —
+    // just refresh metadata and visuals so the simulation doesn't jump.
+    const newIds = papers
+      .filter(p => !p.sessionId && this.filter.has(p.primary))
+      .map(p => p.id).sort().join(",");
+    const curIds = this.paperNodes.map(n => n.id).sort().join(",");
+
+    if (newIds === curIds) {
+      for (const node of this.paperNodes) {
+        const p = papers.find(pp => pp.id === node.id);
+        if (!p) continue;
+        node.title     = p.title;
+        node.featured  = p.featured;
+        node.remote    = p.remote;
+        node.userIdeas = p.userIdeas;
+      }
+      for (const anchor of this.sessionAnchors) {
+        const s = sessions.find(ss => ss.id === anchor.id);
+        if (!s) continue;
+        anchor.name        = s.name;
+        anchor.attractions = s.attractions || [];
+      }
+      this._drawAnchors();
+      this._drawPapers();
+      return;
+    }
+
     this._rebuild();
   }
 
